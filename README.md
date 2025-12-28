@@ -7,7 +7,7 @@
    ██║   ██╔══╝  ██║     ██╔══╝  ╚════██║██╔═══╝ ██║   ██║   ██║   
    ██║   ███████╗███████╗███████╗███████║██║     ╚██████╔╝   ██║   
    ╚═╝   ╚══════╝╚══════╝╚══════╝╚══════╝╚═╝      ╚═════╝    ╚═╝   
-                                                         version 1.0
+                                                         version 1.1
 ```
 
 [![GitHub](https://img.shields.io/badge/GitHub-thumpersecure/Telespot-blue?logo=github)](https://github.com/thumpersecure/Telespot)
@@ -194,6 +194,21 @@ Pass the phone number as an argument:
 ./telespot.py 1-555-555-1212
 ```
 
+### Debug Mode 🐛
+
+If you're getting no results, run in debug mode to see what's happening:
+
+```bash
+./telespot.py --debug 5555551212
+# or
+python telespot.py -d 5555551212
+```
+
+This will show:
+- Exact ddgr commands being run
+- Sample results from each search
+- Error messages and warnings
+
 The script accepts phone numbers in any format - it will strip out non-digit characters automatically.
 
 ## 🔢 Search Formats
@@ -298,6 +313,47 @@ The script includes a **2-second delay** between searches, which is a best pract
 - Intended for legitimate investigative purposes
 
 ## 🔧 Troubleshooting
+
+### Getting "0 results" for all searches 🔍
+This is the most common issue. Try these solutions:
+
+**1. Test ddgr directly:**
+```bash
+# Activate your venv first
+source telespot-env/bin/activate
+
+# Test ddgr with a simple search
+ddgr -n 5 "555-555-1212"
+
+# If you get an error, try:
+ddgr --help
+```
+
+**2. Check ddgr version:**
+```bash
+ddgr --version
+```
+Make sure you have ddgr 2.1 or higher.
+
+**3. Run TeleSpot in debug mode:**
+```bash
+./telespot.py --debug 5555551212
+# or
+python telespot.py -d 5555551212
+```
+This will show you exactly what's happening with each search.
+
+**4. Try manual search format:**
+If automated searches fail, you can manually test specific formats:
+```bash
+ddgr -n 10 '"555-555-1212"'
+```
+
+**5. Reinstall ddgr:**
+```bash
+pip uninstall ddgr
+pip install ddgr --upgrade
+```
 
 ### "ddgr not found" error ❌
 Make sure you:

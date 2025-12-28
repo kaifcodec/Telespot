@@ -19,7 +19,7 @@ ASCII_LOGO = """
    ██║   ██╔══╝  ██║     ██╔══╝  ╚════██║██╔═══╝ ██║   ██║   ██║   
    ██║   ███████╗███████╗███████╗███████║██║     ╚██████╔╝   ██║   
    ╚═╝   ╚══════╝╚══════╝╚══════╝╚══════╝╚═╝      ╚═════╝    ╚═╝   
-                                                         version 1.0
+                                                         version 1.1
 """
 
 # ANSI color codes for terminal output
@@ -86,25 +86,41 @@ def search_ddgr(query, num_results=10):
     """
     try:
         # Use ddgr with JSON output
+        # Note: --json flag might not be available in all ddgr versions
+        # Try JSON first, fall back to regular output
         cmd = ['ddgr', '--json', '-n', str(num_results), query]
+        
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         
-        if result.returncode != 0:
-            print(f"{Colors.YELLOW}Warning: ddgr returned non-zero exit code for query: {query}{Colors.END}")
-            return []
+        # Check if JSON flag is supported
+        if 'unrecognized arguments: --json' in result.stderr or 'invalid choice' in result.stderr:
+            # Fall back to regular output without JSON
+            print(f"  {Colors.YELLOW}Note: Using non-JSON mode (ddgr version doesn't support --json){Colors.END}")
+            cmd = ['ddgr', '-n', str(num_results), '--np', query]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            
+            # Parse the regular output
+            return parse_ddgr_output(result.stdout)
         
-        # Parse JSON output
+        # ddgr returns exit code 0 for success, but sometimes returns non-zero even with results
+        # So we check stdout first before checking return code
         if result.stdout.strip():
-            results = json.loads(result.stdout)
-            return results
-        else:
-            return []
+            try:
+                results = json.loads(result.stdout)
+                return results if isinstance(results, list) else []
+            except json.JSONDecodeError:
+                # If JSON parsing fails, try parsing as regular output
+                print(f"  {Colors.YELLOW}JSON parsing failed, trying regular output parsing{Colors.END}")
+                return parse_ddgr_output(result.stdout)
+        
+        # If no stdout but stderr has content, show it for debugging
+        if result.stderr.strip():
+            print(f"  {Colors.YELLOW}ddgr stderr: {result.stderr[:200]}{Colors.END}")
+        
+        return []
             
     except subprocess.TimeoutExpired:
         print(f"{Colors.RED}Error: Search timed out for query: {query}{Colors.END}")
-        return []
-    except json.JSONDecodeError as e:
-        print(f"{Colors.RED}Error: Failed to parse JSON output: {e}{Colors.END}")
         return []
     except FileNotFoundError:
         print(f"{Colors.RED}Error: ddgr not found. Please install ddgr first.{Colors.END}")
@@ -113,6 +129,55 @@ def search_ddgr(query, num_results=10):
     except Exception as e:
         print(f"{Colors.RED}Error during search: {e}{Colors.END}")
         return []
+
+
+def parse_ddgr_output(output):
+    """
+    Parse non-JSON ddgr output into structured results
+    Args:
+        output: raw text output from ddgr
+    Returns:
+        list of result dictionaries
+    """
+    results = []
+    current_result = {}
+    
+    lines = output.split('\n')
+    i = 0
+    
+    while i < len(lines):
+        line = lines[i].strip()
+        
+        # Result number line (e.g., "1. Title here")
+        if re.match(r'^\d+\.\s+', line):
+            # Save previous result if exists
+            if current_result:
+                results.append(current_result)
+            
+            # Start new result
+            title = re.sub(r'^\d+\.\s+', '', line)
+            current_result = {'title': title, 'abstract': '', 'url': ''}
+            i += 1
+            continue
+        
+        # URL line (usually starts with http)
+        if line.startswith('http'):
+            current_result['url'] = line
+            i += 1
+            continue
+        
+        # Abstract/description (non-empty lines that aren't URLs or numbers)
+        if line and not line.startswith('http') and not re.match(r'^\d+\.\s+', line):
+            if current_result and 'abstract' in current_result:
+                current_result['abstract'] += ' ' + line if current_result['abstract'] else line
+        
+        i += 1
+    
+    # Add the last result
+    if current_result and current_result.get('title'):
+        results.append(current_result)
+    
+    return results
 
 
 def extract_domain(url):
@@ -329,6 +394,12 @@ def main():
     print(ASCII_LOGO)
     print(f"{Colors.END}")
     
+    # Check for debug flag
+    debug_mode = '--debug' in sys.argv or '-d' in sys.argv
+    if debug_mode:
+        sys.argv = [arg for arg in sys.argv if arg not in ['--debug', '-d']]
+        print(f"{Colors.YELLOW}🐛 Debug mode enabled{Colors.END}\n")
+    
     # Get phone number from user
     if len(sys.argv) > 1:
         phone_number = sys.argv[1]
@@ -349,10 +420,18 @@ def main():
     for i, fmt in enumerate(formats, 1):
         print(f"{Colors.BLUE}[{i}/{len(formats)}] Searching: {Colors.END}{fmt}")
         
+        if debug_mode:
+            print(f"  {Colors.YELLOW}Debug: Running command: ddgr -n 10 {fmt}{Colors.END}")
+        
         results = search_ddgr(fmt, num_results=10)
         all_results[fmt] = results
         
         print(f"  {Colors.GREEN}→ Found {len(results)} results{Colors.END}")
+        
+        if debug_mode and results:
+            print(f"  {Colors.YELLOW}Debug: Sample result - Title: {results[0].get('title', 'N/A')[:50]}...{Colors.END}")
+        elif debug_mode and not results:
+            print(f"  {Colors.YELLOW}Debug: No results returned from ddgr{Colors.END}")
         
         # Rate limiting: wait 2 seconds between searches (best practice to avoid throttling)
         if i < len(formats):
