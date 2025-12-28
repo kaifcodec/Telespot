@@ -7,32 +7,41 @@
    ██║   ██╔══╝  ██║     ██╔══╝  ╚════██║██╔═══╝ ██║   ██║   ██║   
    ██║   ███████╗███████╗███████╗███████║██║     ╚██████╔╝   ██║   
    ╚═╝   ╚══════╝╚══════╝╚══════╝╚══════╝╚═╝      ╚═════╝    ╚═╝   
-                                                         version 1.1
+                                                         version 2.0
 ```
 
 [![GitHub](https://img.shields.io/badge/GitHub-thumpersecure/Telespot-blue?logo=github)](https://github.com/thumpersecure/Telespot)
 [![Python](https://img.shields.io/badge/Python-3.6+-blue?logo=python)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green)](https://github.com/thumpersecure/Telespot/blob/main/LICENSE)
 
-A Python script that searches DuckDuckGo for phone numbers using multiple format variations and analyzes patterns in the results.
+A Python script that searches **Google, Bing, and DuckDuckGo** for phone numbers using multiple format variations and focuses on identifying **names and locations** in the results.
 
 ## ✨ Features
 
-- **Multiple Format Searching**: Automatically generates 8 different phone number format variations
-- **Pattern Analysis**: Identifies common patterns including:
-  - Domain frequency (which websites appear most)
-  - Associated names
-  - Geographic locations
-  - Business vs. personal indicators
-  - Spam/scam warnings
-- **Rate Limiting**: Built-in 2-second delays between searches to avoid throttling
+- **Multi-Engine Search**: Searches Google, Bing, AND DuckDuckGo simultaneously 🔍
+- **Multiple Format Searching**: Automatically generates 4 different phone number format variations
+- **Focused Pattern Analysis**: Identifies common patterns:
+  - 📛 **Associated names** (people mentioned with the number)
+  - 📍 **Geographic locations** (cities, states, zip codes)
+  - ✅ **Results by source** (which search engine found what)
+- **Rate Limiting**: Built-in delays between searches to avoid throttling
 - **Colored Terminal Output**: Easy-to-read results with color coding
 - **JSON Export**: Option to save detailed results for further analysis
+
+## 🎯 Key Differences from v1.x
+
+- ✅ **No more ddgr dependency** - Uses direct web scraping instead
+- ✅ **3 search engines** instead of just DuckDuckGo
+- ✅ **Focused on names & locations** - Removed domain analysis
+- ✅ **More reliable results** - Web scraping gives consistent output
 
 ## 📋 Prerequisites
 
 1. **Python 3.6+** 🐍
-2. **ddgr** - DuckDuckGo command-line search tool (included in requirements.txt)
+2. **Required Python packages** (included in requirements.txt):
+   - `requests` - For HTTP requests to search engines
+   - `beautifulsoup4` - For parsing HTML search results
+   - `lxml` - HTML/XML parser
 
 ### Setting Up Python Virtual Environment (Recommended) 🔧
 
@@ -57,24 +66,6 @@ Once your virtual environment is activated:
 ```bash
 # Install from requirements.txt
 pip install -r requirements.txt
-```
-
-### Manual Installation (Alternative)
-
-If you prefer to install ddgr manually without a virtual environment:
-
-```bash
-# Using pip
-pip install ddgr
-
-# On Debian/Ubuntu
-sudo apt install ddgr
-
-# On Arch Linux
-sudo pacman -S ddgr
-
-# On macOS with Homebrew
-brew install ddgr
 ```
 
 ## 📥 Installation
@@ -213,16 +204,19 @@ The script accepts phone numbers in any format - it will strip out non-digit cha
 
 ## 🔢 Search Formats
 
-The script searches for the following format variations:
+The script searches for the following format variations across **all three search engines**:
 
-1. `"555-555-1212"` - Quoted with dashes
-2. `"(555) 555-1212"` - Quoted with parentheses
-3. `"5555551212"` - Quoted digits only
-4. `"15555551212"` - Quoted with country code
-5. `"1 (555) 555-1212"` - Quoted with country code and parentheses
-6. `"1 555-555-1212"` - Quoted with country code and dashes
-7. `(555-555-1212)` - Parentheses without quotes
-8. `555-555-1212` - No quotes or parentheses
+1. `555-555-1212` - Dashes
+2. `(555) 555-1212` - Parentheses and dashes
+3. `5555551212` - Digits only
+4. `1 555-555-1212` - Country code with dashes
+
+Each format is searched on:
+- 🔵 **Google** (5 results per format)
+- 🟢 **Bing** (5 results per format)
+- 🦆 **DuckDuckGo** (5 results per format)
+
+**Total**: Up to 60 results per search (4 formats × 3 engines × 5 results)
 
 ## 📊 Output
 
@@ -230,16 +224,11 @@ The script searches for the following format variations:
 
 The script provides:
 
-- **Total results found** across all formats
-- **Unique domains** where the number appears
-- **Most common domains** with frequency percentages
-- **Potential names** associated with the number
-- **Geographic locations** mentioned
-- **Content type indicators**:
-  - Business-related results
-  - Personal-related results
-  - Spam/scam warnings
-- **Key insights** summarizing findings
+- **Total results found** across all search engines
+- **Results by source** (Google, Bing, DuckDuckGo breakdown)
+- **📛 Names found** - People's names associated with the number
+- **📍 Locations mentioned** - Cities, states, and zip codes
+- **🔍 Key insights** - Most frequently appearing name and location
 
 ### Example Output
 
@@ -248,28 +237,24 @@ The script provides:
 PATTERN ANALYSIS SUMMARY
 ================================================================================
 
-Total Results Found: 47
-Unique Domains: 12
+Total Results Found: 42
 
-Most Common Domains:
-  • whitepages.com: 8 occurrences (17.0%)
-  • spokeo.com: 6 occurrences (12.8%)
-  • truecaller.com: 5 occurrences (10.6%)
+Results by Source:
+  • Google: 18 results
+  • Bing: 15 results
+  • DuckDuckGo: 9 results
 
-Potential Names Found:
-  • John Smith: mentioned 12 time(s)
+📛 Names Found:
+  • John Smith: mentioned 8 time(s)
   • Jane Doe: mentioned 3 time(s)
+  • Mike Johnson: mentioned 2 time(s)
 
-Locations Mentioned:
-  • Philadelphia, PA: 8 occurrence(s)
-  • PA: 5 occurrence(s)
+📍 Locations Mentioned:
+  • Philadelphia, PA: 12 occurrence(s)
+  • PA: 8 occurrence(s)
+  • 19102: 3 occurrence(s)
 
-Content Type Indicators:
-  • Business-related: 3 results
-  • Spam/Scam indicators: 2 results
-
-Key Insights:
-  • Listed in online directories
+🔍 Key Insights:
   • Most associated name: John Smith
   • Most associated location: Philadelphia, PA
 ================================================================================
@@ -280,22 +265,27 @@ Key Insights:
 After the analysis, you'll be prompted to save detailed results to a JSON file:
 
 ```
-Save detailed results to JSON file? (y/n): y
-Results saved to: phone_search_5555551212.json
+Save detailed results to file? (y/n): y
+Results saved to: telespot_results_5555551212.json
 ```
 
 The JSON file contains:
 - Original phone number
 - All search format variations used
-- Complete search results for each format
-- Full pattern analysis data
+- Complete search results from all engines
+- Full pattern analysis data (names and locations)
 
 ## ⏱️ Rate Limiting
 
-The script includes a **2-second delay** between searches, which is a best practice to:
-- Avoid being throttled or blocked by DuckDuckGo
-- Be respectful to the search service
-- Ensure consistent results
+The script includes **smart rate limiting** to avoid being blocked:
+- 1 second delay between search engines (Google → Bing → DuckDuckGo)
+- 3 second delay between phone number formats
+- Total search time: ~1-2 minutes for a complete search
+
+This ensures:
+- ✅ Respectful to search engines
+- ✅ Avoids IP blocks or CAPTCHAs
+- ✅ Consistent, reliable results
 
 ## 🎯 Use Cases
 
@@ -315,52 +305,35 @@ The script includes a **2-second delay** between searches, which is a best pract
 ## 🔧 Troubleshooting
 
 ### Getting "0 results" for all searches 🔍
-This is the most common issue. Try these solutions:
 
-**1. Test ddgr directly:**
+**1. Check your internet connection:**
+```bash
+ping google.com
+```
+
+**2. Test the dependencies:**
 ```bash
 # Activate your venv first
 source telespot-env/bin/activate
 
-# Test ddgr with a simple search
-ddgr -n 5 "555-555-1212"
-
-# If you get an error, try:
-ddgr --help
+# Test if packages are installed
+python -c "import requests; import bs4; print('Dependencies OK')"
 ```
 
-**2. Check ddgr version:**
-```bash
-ddgr --version
-```
-Make sure you have ddgr 2.1 or higher.
-
-**3. Run TeleSpot in debug mode:**
+**3. Run in debug mode:**
 ```bash
 ./telespot.py --debug 5555551212
-# or
-python telespot.py -d 5555551212
-```
-This will show you exactly what's happening with each search.
-
-**4. Try manual search format:**
-If automated searches fail, you can manually test specific formats:
-```bash
-ddgr -n 10 '"555-555-1212"'
 ```
 
-**5. Reinstall ddgr:**
-```bash
-pip uninstall ddgr
-pip install ddgr --upgrade
-```
+**4. Try a well-known number:**
+Test with a business number you can verify has results online, like a major company's customer service line.
 
-### "ddgr not found" error ❌
-Make sure you:
-1. Activated your virtual environment: `source telespot-env/bin/activate`
-2. Installed dependencies: `pip install -r requirements.txt`
+### Search engines blocking requests 🚫
 
-If you're not using a virtual environment, install ddgr using one of the methods in the Prerequisites section.
+If you're getting blocked or seeing CAPTCHAs:
+- **Wait 10-15 minutes** before running again
+- **Use a VPN** to change your IP address
+- **Reduce search frequency** - Don't run multiple searches back-to-back
 
 ### ImportError or Module Not Found 🚨
 This usually means your virtual environment isn't activated or dependencies aren't installed:
@@ -373,22 +346,35 @@ pip install -r requirements.txt
 ```
 
 ### No results found 🤷
-- The phone number may not be indexed in search engines
-- Try searching with fewer format variations
-- The number may be new or unlisted
+- The phone number may not be publicly indexed
+- Try searching manually in a browser to confirm
+- Number might be new, unlisted, or private
 
-### Rate limiting issues ⏳
-If you encounter rate limiting:
-- Increase the delay between searches (edit the `time.sleep(2)` value)
-- Run searches in smaller batches
+### Connection timeout errors ⏳
+If searches are timing out:
+- Check your internet connection
+- The search engine might be temporarily down
+- Try again in a few minutes
 
 ## ⚙️ Technical Details
 
 - **Language**: Python 3 🐍
-- **Dependencies**: ddgr (specified in requirements.txt)
+- **Dependencies**: requests, beautifulsoup4, lxml (specified in requirements.txt)
 - **Recommended Setup**: Python virtual environment
 - **Output**: Colored terminal text + optional JSON export
-- **Search engine**: DuckDuckGo (via ddgr) 🦆
+- **Search engines**: Google, Bing, DuckDuckGo 🔍
+- **Method**: Web scraping with BeautifulSoup
+
+### How It Works 🛠️
+
+1. **Format Generation**: Creates 4 variations of the phone number
+2. **Multi-Engine Search**: Queries Google, Bing, and DuckDuckGo for each format
+3. **HTML Parsing**: Extracts titles and snippets from search results using BeautifulSoup
+4. **Pattern Analysis**: 
+   - Identifies names using capitalization patterns
+   - Detects locations via state codes, city names, and zip codes
+   - Counts frequency of mentions
+5. **Result Summary**: Displays most common names and locations
 
 ### Project Structure 📁
 ```

@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
-TeleSpot - DuckDuckGo Multi-Format Phone Number Search
-Searches for phone numbers in various formats and analyzes patterns in results
+TeleSpot - Multi-Engine Phone Number Search
+Searches for phone numbers across Google, Bing, and DuckDuckGo
+Focuses on name and location pattern analysis
 """
 
-import subprocess
-import json
+import requests
 import time
 import re
 import sys
-from collections import Counter, defaultdict
-from urllib.parse import urlparse
+from collections import Counter
+from bs4 import BeautifulSoup
+from urllib.parse import quote_plus
 
 ASCII_LOGO = """
 ████████╗███████╗██╗     ███████╗███████╗██████╗  ██████╗ ████████╗
@@ -19,7 +20,7 @@ ASCII_LOGO = """
    ██║   ██╔══╝  ██║     ██╔══╝  ╚════██║██╔═══╝ ██║   ██║   ██║   
    ██║   ███████╗███████╗███████╗███████║██║     ╚██████╔╝   ██║   
    ╚═╝   ╚══════╝╚══════╝╚══════╝╚══════╝╚═╝      ╚═════╝    ╚═╝   
-                                                         version 1.1
+                                                         version 2.0
 """
 
 # ANSI color codes for terminal output
@@ -35,18 +36,28 @@ class Colors:
     UNDERLINE = '\033[4m'
 
 
+# Common US states for location detection
+US_STATES = {
+    'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas',
+    'CA': 'California', 'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware',
+    'FL': 'Florida', 'GA': 'Georgia', 'HI': 'Hawaii', 'ID': 'Idaho',
+    'IL': 'Illinois', 'IN': 'Indiana', 'IA': 'Iowa', 'KS': 'Kansas',
+    'KY': 'Kentucky', 'LA': 'Louisiana', 'ME': 'Maine', 'MD': 'Maryland',
+    'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota', 'MS': 'Mississippi',
+    'MO': 'Missouri', 'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada',
+    'NH': 'New Hampshire', 'NJ': 'New Jersey', 'NM': 'New Mexico', 'NY': 'New York',
+    'NC': 'North Carolina', 'ND': 'North Dakota', 'OH': 'Ohio', 'OK': 'Oklahoma',
+    'OR': 'Oregon', 'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina',
+    'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah',
+    'VT': 'Vermont', 'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia',
+    'WI': 'Wisconsin', 'WY': 'Wyoming'
+}
+
+
 def generate_phone_formats(phone_number):
-    """
-    Generate various phone number formats for searching
-    Args:
-        phone_number: string of digits (e.g., "5555551212" or "15555551212")
-    Returns:
-        list of formatted phone number strings
-    """
-    # Strip all non-digit characters
+    """Generate various phone number formats for searching"""
     digits = re.sub(r'\D', '', phone_number)
     
-    # Handle 10-digit or 11-digit numbers
     if len(digits) == 11 and digits.startswith('1'):
         area = digits[1:4]
         prefix = digits[4:7]
@@ -62,321 +73,251 @@ def generate_phone_formats(phone_number):
         return []
     
     formats = [
-        f'"{area}-{prefix}-{line}"',           # "555-555-1212"
-        f'"({area}) {prefix}-{line}"',         # "(555) 555-1212"
-        f'"{area}{prefix}{line}"',             # "5555551212"
-        f'"{country}{area}{prefix}{line}"',    # "15555551212"
-        f'"{country} ({area}) {prefix}-{line}"', # "1 (555) 555-1212"
-        f'"{country} {area}-{prefix}-{line}"', # "1 555-555-1212"
-        f'({area}-{prefix}-{line})',           # (555-555-1212)
-        f'{area}-{prefix}-{line}',             # 555-555-1212
+        f'{area}-{prefix}-{line}',           # 555-555-1212
+        f'({area}) {prefix}-{line}',         # (555) 555-1212
+        f'{area}{prefix}{line}',             # 5555551212
+        f'{country} {area}-{prefix}-{line}', # 1 555-555-1212
     ]
     
     return formats
 
 
-def search_ddgr(query, num_results=10):
-    """
-    Execute ddgr search and return results
-    Args:
-        query: search query string
-        num_results: number of results to retrieve
-    Returns:
-        list of result dictionaries
-    """
-    try:
-        # Use ddgr with JSON output
-        # Note: --json flag might not be available in all ddgr versions
-        # Try JSON first, fall back to regular output
-        cmd = ['ddgr', '--json', '-n', str(num_results), query]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        
-        # Check if JSON flag is supported
-        if 'unrecognized arguments: --json' in result.stderr or 'invalid choice' in result.stderr:
-            # Fall back to regular output without JSON
-            print(f"  {Colors.YELLOW}Note: Using non-JSON mode (ddgr version doesn't support --json){Colors.END}")
-            cmd = ['ddgr', '-n', str(num_results), '--np', query]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            
-            # Parse the regular output
-            return parse_ddgr_output(result.stdout)
-        
-        # ddgr returns exit code 0 for success, but sometimes returns non-zero even with results
-        # So we check stdout first before checking return code
-        if result.stdout.strip():
-            try:
-                results = json.loads(result.stdout)
-                return results if isinstance(results, list) else []
-            except json.JSONDecodeError:
-                # If JSON parsing fails, try parsing as regular output
-                print(f"  {Colors.YELLOW}JSON parsing failed, trying regular output parsing{Colors.END}")
-                return parse_ddgr_output(result.stdout)
-        
-        # If no stdout but stderr has content, show it for debugging
-        if result.stderr.strip():
-            print(f"  {Colors.YELLOW}ddgr stderr: {result.stderr[:200]}{Colors.END}")
-        
-        return []
-            
-    except subprocess.TimeoutExpired:
-        print(f"{Colors.RED}Error: Search timed out for query: {query}{Colors.END}")
-        return []
-    except FileNotFoundError:
-        print(f"{Colors.RED}Error: ddgr not found. Please install ddgr first.{Colors.END}")
-        print(f"Install with: pip install ddgr")
-        sys.exit(1)
-    except Exception as e:
-        print(f"{Colors.RED}Error during search: {e}{Colors.END}")
-        return []
-
-
-def parse_ddgr_output(output):
-    """
-    Parse non-JSON ddgr output into structured results
-    Args:
-        output: raw text output from ddgr
-    Returns:
-        list of result dictionaries
-    """
+def search_google(query, num_results=10):
+    """Search Google and extract results"""
     results = []
-    current_result = {}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
     
-    lines = output.split('\n')
-    i = 0
-    
-    while i < len(lines):
-        line = lines[i].strip()
-        
-        # Result number line (e.g., "1. Title here")
-        if re.match(r'^\d+\.\s+', line):
-            # Save previous result if exists
-            if current_result:
-                results.append(current_result)
-            
-            # Start new result
-            title = re.sub(r'^\d+\.\s+', '', line)
-            current_result = {'title': title, 'abstract': '', 'url': ''}
-            i += 1
-            continue
-        
-        # URL line (usually starts with http)
-        if line.startswith('http'):
-            current_result['url'] = line
-            i += 1
-            continue
-        
-        # Abstract/description (non-empty lines that aren't URLs or numbers)
-        if line and not line.startswith('http') and not re.match(r'^\d+\.\s+', line):
-            if current_result and 'abstract' in current_result:
-                current_result['abstract'] += ' ' + line if current_result['abstract'] else line
-        
-        i += 1
-    
-    # Add the last result
-    if current_result and current_result.get('title'):
-        results.append(current_result)
-    
-    return results
-
-
-def extract_domain(url):
-    """Extract domain from URL"""
     try:
-        parsed = urlparse(url)
-        domain = parsed.netloc or parsed.path
-        # Remove www. prefix
-        domain = re.sub(r'^www\.', '', domain)
-        return domain
-    except:
-        return url
+        url = f'https://www.google.com/search?q={quote_plus(query)}&num={num_results}'
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Find search result divs
+            for g in soup.find_all('div', class_='g'):
+                # Extract title
+                title_elem = g.find('h3')
+                title = title_elem.get_text() if title_elem else ''
+                
+                # Extract snippet
+                snippet_elem = g.find('div', class_=['VwiC3b', 'yXK7lf'])
+                snippet = snippet_elem.get_text() if snippet_elem else ''
+                
+                if title or snippet:
+                    results.append({
+                        'title': title,
+                        'snippet': snippet,
+                        'source': 'Google'
+                    })
+        
+        return results
+    except Exception as e:
+        print(f"  {Colors.YELLOW}Google search error: {str(e)[:50]}{Colors.END}")
+        return []
+
+
+def search_bing(query, num_results=10):
+    """Search Bing and extract results"""
+    results = []
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+    
+    try:
+        url = f'https://www.bing.com/search?q={quote_plus(query)}&count={num_results}'
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Find search result items
+            for item in soup.find_all('li', class_='b_algo'):
+                # Extract title
+                title_elem = item.find('h2')
+                title = title_elem.get_text() if title_elem else ''
+                
+                # Extract snippet
+                snippet_elem = item.find('p')
+                snippet = snippet_elem.get_text() if snippet_elem else ''
+                
+                if title or snippet:
+                    results.append({
+                        'title': title,
+                        'snippet': snippet,
+                        'source': 'Bing'
+                    })
+        
+        return results
+    except Exception as e:
+        print(f"  {Colors.YELLOW}Bing search error: {str(e)[:50]}{Colors.END}")
+        return []
+
+
+def search_duckduckgo(query, num_results=10):
+    """Search DuckDuckGo and extract results"""
+    results = []
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+    
+    try:
+        url = f'https://html.duckduckgo.com/html/?q={quote_plus(query)}'
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Find search results
+            for result in soup.find_all('div', class_='result'):
+                # Extract title
+                title_elem = result.find('a', class_='result__a')
+                title = title_elem.get_text() if title_elem else ''
+                
+                # Extract snippet
+                snippet_elem = result.find('a', class_='result__snippet')
+                snippet = snippet_elem.get_text() if snippet_elem else ''
+                
+                if title or snippet:
+                    results.append({
+                        'title': title,
+                        'snippet': snippet,
+                        'source': 'DuckDuckGo'
+                    })
+                
+                if len(results) >= num_results:
+                    break
+        
+        return results
+    except Exception as e:
+        print(f"  {Colors.YELLOW}DuckDuckGo search error: {str(e)[:50]}{Colors.END}")
+        return []
 
 
 def extract_names(text):
-    """
-    Extract potential names from text (capitalized words that might be names)
-    Simple heuristic: sequences of 2-3 capitalized words
-    """
+    """Extract potential names from text"""
     # Pattern for potential names (2-3 capitalized words in sequence)
     name_pattern = r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b'
     names = re.findall(name_pattern, text)
     
     # Filter out common non-name words
-    excluded = {'Phone', 'Number', 'Call', 'Contact', 'Email', 'Address', 
-                'Street', 'City', 'State', 'Country', 'The', 'This', 'That',
-                'Search', 'Results', 'View', 'More', 'Less', 'Show', 'Hide'}
+    excluded = {
+        'Phone', 'Number', 'Call', 'Contact', 'Email', 'Address', 
+        'Street', 'City', 'State', 'Country', 'The', 'This', 'That',
+        'Search', 'Results', 'View', 'More', 'Less', 'Show', 'Hide',
+        'United States', 'New York', 'Los Angeles', 'San Francisco',
+        'Google', 'Bing', 'Yahoo', 'Facebook', 'Twitter', 'Instagram',
+        'Best', 'Top', 'Free', 'Online', 'Reviews', 'About', 'Home',
+        'Business', 'Service', 'Services', 'Company', 'Companies'
+    }
     
     filtered_names = []
     for name in names:
-        words = name.split()
-        if not any(word in excluded for word in words):
+        # Skip single word names and excluded terms
+        if name not in excluded and len(name.split()) >= 2:
             filtered_names.append(name)
     
     return filtered_names
 
 
 def extract_locations(text):
-    """
-    Extract potential locations from text
-    """
-    # Pattern for US states (abbreviations and full names)
-    states = r'\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b'
-    
-    # Common city patterns (capitalized word followed by state)
-    city_state_pattern = r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?),?\s+(' + states + r')\b'
-    
+    """Extract potential locations from text"""
     locations = []
     
     # Find state abbreviations
-    state_matches = re.findall(states, text)
+    state_pattern = r'\b(' + '|'.join(US_STATES.keys()) + r')\b'
+    state_matches = re.findall(state_pattern, text)
     locations.extend(state_matches)
     
     # Find city, state combinations
+    city_state_pattern = r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?),?\s+(' + '|'.join(US_STATES.keys()) + r')\b'
     city_state_matches = re.findall(city_state_pattern, text)
-    locations.extend([f"{city}, {state}" for city, state in city_state_matches])
+    for city, state in city_state_matches:
+        locations.append(f"{city}, {state}")
+    
+    # Find full state names
+    for abbr, full_name in US_STATES.items():
+        if full_name in text:
+            locations.append(full_name)
+    
+    # Find zip codes
+    zip_pattern = r'\b\d{5}(?:-\d{4})?\b'
+    zip_matches = re.findall(zip_pattern, text)
+    locations.extend(zip_matches)
     
     return list(set(locations))
 
 
 def analyze_patterns(all_results):
-    """
-    Analyze results for common patterns
-    Args:
-        all_results: dict mapping search format to list of results
-    Returns:
-        dict with pattern analysis
-    """
-    # Collect all data
-    all_domains = []
-    all_titles = []
-    all_abstracts = []
-    all_urls = []
+    """Analyze results for name and location patterns"""
+    all_text = []
+    source_counts = Counter()
     
-    for format_str, results in all_results.items():
-        for result in results:
-            url = result.get('url', '')
-            title = result.get('title', '')
-            abstract = result.get('abstract', '')
-            
-            all_urls.append(url)
-            all_titles.append(title)
-            all_abstracts.append(abstract)
-            all_domains.append(extract_domain(url))
+    for format_str, search_results in all_results.items():
+        for result in search_results:
+            text = f"{result.get('title', '')} {result.get('snippet', '')}"
+            all_text.append(text)
+            source_counts[result.get('source', 'Unknown')] += 1
     
-    # Count domains
-    domain_counter = Counter(all_domains)
+    # Combine all text
+    combined_text = ' '.join(all_text)
     
-    # Extract and count names
-    all_text = ' '.join(all_titles + all_abstracts)
-    names = extract_names(all_text)
+    # Extract names and locations
+    names = extract_names(combined_text)
     name_counter = Counter(names)
     
-    # Extract and count locations
-    locations = extract_locations(all_text)
+    locations = extract_locations(combined_text)
     location_counter = Counter(locations)
     
-    # Identify common URL patterns
-    url_patterns = defaultdict(list)
-    for url in all_urls:
-        domain = extract_domain(url)
-        url_patterns[domain].append(url)
-    
-    # Check for business indicators
-    business_keywords = ['business', 'company', 'corp', 'inc', 'llc', 'ltd', 
-                         'service', 'services', 'professional', 'office']
-    personal_keywords = ['person', 'individual', 'personal', 'private', 'residential']
-    spam_keywords = ['spam', 'scam', 'robocall', 'telemarketer', 'fraud', 'complaint']
-    
-    business_count = sum(1 for text in all_titles + all_abstracts 
-                        if any(kw in text.lower() for kw in business_keywords))
-    personal_count = sum(1 for text in all_titles + all_abstracts 
-                        if any(kw in text.lower() for kw in personal_keywords))
-    spam_count = sum(1 for text in all_titles + all_abstracts 
-                    if any(kw in text.lower() for kw in spam_keywords))
-    
     return {
-        'total_results': len(all_urls),
-        'unique_domains': len(domain_counter),
-        'domain_frequency': domain_counter.most_common(10),
-        'common_names': name_counter.most_common(5),
-        'common_locations': location_counter.most_common(5),
-        'business_indicators': business_count,
-        'personal_indicators': personal_count,
-        'spam_indicators': spam_count,
-        'url_patterns': dict(url_patterns)
+        'total_results': len(all_text),
+        'results_by_source': dict(source_counts),
+        'common_names': name_counter.most_common(10),
+        'common_locations': location_counter.most_common(10),
     }
 
 
 def print_pattern_summary(patterns):
-    """
-    Print a formatted summary of pattern analysis
-    """
+    """Print a formatted summary of pattern analysis"""
     print(f"\n{Colors.BOLD}{Colors.HEADER}{'='*80}{Colors.END}")
     print(f"{Colors.BOLD}{Colors.HEADER}PATTERN ANALYSIS SUMMARY{Colors.END}")
     print(f"{Colors.BOLD}{Colors.HEADER}{'='*80}{Colors.END}\n")
     
-    print(f"{Colors.CYAN}Total Results Found:{Colors.END} {patterns['total_results']}")
-    print(f"{Colors.CYAN}Unique Domains:{Colors.END} {patterns['unique_domains']}\n")
+    print(f"{Colors.CYAN}Total Results Found:{Colors.END} {patterns['total_results']}\n")
     
-    # Domain patterns
-    if patterns['domain_frequency']:
-        print(f"{Colors.BOLD}{Colors.BLUE}Most Common Domains:{Colors.END}")
-        for domain, count in patterns['domain_frequency']:
-            percentage = (count / patterns['total_results']) * 100 if patterns['total_results'] > 0 else 0
-            print(f"  • {Colors.GREEN}{domain}{Colors.END}: {count} occurrences ({percentage:.1f}%)")
+    # Source breakdown
+    if patterns['results_by_source']:
+        print(f"{Colors.BOLD}{Colors.BLUE}Results by Source:{Colors.END}")
+        for source, count in patterns['results_by_source'].items():
+            print(f"  • {Colors.GREEN}{source}{Colors.END}: {count} results")
         print()
     
     # Name patterns
     if patterns['common_names']:
-        print(f"{Colors.BOLD}{Colors.BLUE}Potential Names Found:{Colors.END}")
+        print(f"{Colors.BOLD}{Colors.BLUE}📛 Names Found:{Colors.END}")
         for name, count in patterns['common_names']:
             print(f"  • {Colors.GREEN}{name}{Colors.END}: mentioned {count} time(s)")
         print()
+    else:
+        print(f"{Colors.YELLOW}No names detected in search results{Colors.END}\n")
     
     # Location patterns
     if patterns['common_locations']:
-        print(f"{Colors.BOLD}{Colors.BLUE}Locations Mentioned:{Colors.END}")
+        print(f"{Colors.BOLD}{Colors.BLUE}📍 Locations Mentioned:{Colors.END}")
         for location, count in patterns['common_locations']:
             print(f"  • {Colors.GREEN}{location}{Colors.END}: {count} occurrence(s)")
         print()
+    else:
+        print(f"{Colors.YELLOW}No locations detected in search results{Colors.END}\n")
     
-    # Type indicators
-    print(f"{Colors.BOLD}{Colors.BLUE}Content Type Indicators:{Colors.END}")
-    if patterns['business_indicators'] > 0:
-        print(f"  • {Colors.YELLOW}Business-related:{Colors.END} {patterns['business_indicators']} results")
-    if patterns['personal_indicators'] > 0:
-        print(f"  • {Colors.YELLOW}Personal-related:{Colors.END} {patterns['personal_indicators']} results")
-    if patterns['spam_indicators'] > 0:
-        print(f"  • {Colors.RED}Spam/Scam indicators:{Colors.END} {patterns['spam_indicators']} results")
-    
-    if patterns['business_indicators'] == 0 and patterns['personal_indicators'] == 0 and patterns['spam_indicators'] == 0:
-        print(f"  • {Colors.YELLOW}No specific type indicators found{Colors.END}")
-    
-    print()
-    
-    # Pattern insights
-    print(f"{Colors.BOLD}{Colors.BLUE}Key Insights:{Colors.END}")
+    # Key insights
+    print(f"{Colors.BOLD}{Colors.BLUE}🔍 Key Insights:{Colors.END}")
     
     if patterns['total_results'] == 0:
         print(f"  • {Colors.YELLOW}No results found for this phone number{Colors.END}")
     else:
-        # Determine primary domain type
-        top_domains = [d for d, c in patterns['domain_frequency'][:3]]
-        
-        social_domains = ['facebook.com', 'linkedin.com', 'twitter.com', 'instagram.com', 'tiktok.com']
-        directory_domains = ['whitepages.com', 'yellowpages.com', '411.com', 'spokeo.com', 'truecaller.com']
-        
-        social_count = sum(1 for d in top_domains if any(s in d for s in social_domains))
-        directory_count = sum(1 for d in top_domains if any(s in d for s in directory_domains))
-        
-        if social_count > 0:
-            print(f"  • {Colors.GREEN}Appears on social media platforms{Colors.END}")
-        if directory_count > 0:
-            print(f"  • {Colors.GREEN}Listed in online directories{Colors.END}")
-        
-        if patterns['spam_indicators'] > 2:
-            print(f"  • {Colors.RED}Multiple spam/scam warnings found - exercise caution{Colors.END}")
-        
         if len(patterns['common_names']) > 0:
             primary_name = patterns['common_names'][0][0]
             print(f"  • {Colors.GREEN}Most associated name: {primary_name}{Colors.END}")
@@ -384,6 +325,9 @@ def print_pattern_summary(patterns):
         if len(patterns['common_locations']) > 0:
             primary_location = patterns['common_locations'][0][0]
             print(f"  • {Colors.GREEN}Most associated location: {primary_location}{Colors.END}")
+        
+        if len(patterns['common_names']) == 0 and len(patterns['common_locations']) == 0:
+            print(f"  • {Colors.YELLOW}Found results but no clear name or location patterns{Colors.END}")
     
     print(f"\n{Colors.BOLD}{Colors.HEADER}{'='*80}{Colors.END}\n")
 
@@ -416,39 +360,60 @@ def main():
     
     all_results = {}
     
-    # Search each format with rate limiting
+    # Search each format across multiple engines
     for i, fmt in enumerate(formats, 1):
         print(f"{Colors.BLUE}[{i}/{len(formats)}] Searching: {Colors.END}{fmt}")
         
-        if debug_mode:
-            print(f"  {Colors.YELLOW}Debug: Running command: ddgr -n 10 {fmt}{Colors.END}")
+        format_results = []
         
-        results = search_ddgr(fmt, num_results=10)
-        all_results[fmt] = results
+        # Search Google
+        print(f"  {Colors.CYAN}→ Searching Google...{Colors.END}", end=' ')
+        google_results = search_google(fmt, num_results=5)
+        format_results.extend(google_results)
+        print(f"{Colors.GREEN}({len(google_results)} results){Colors.END}")
         
-        print(f"  {Colors.GREEN}→ Found {len(results)} results{Colors.END}")
+        time.sleep(1)  # Rate limiting
         
-        if debug_mode and results:
-            print(f"  {Colors.YELLOW}Debug: Sample result - Title: {results[0].get('title', 'N/A')[:50]}...{Colors.END}")
-        elif debug_mode and not results:
-            print(f"  {Colors.YELLOW}Debug: No results returned from ddgr{Colors.END}")
+        # Search Bing
+        print(f"  {Colors.CYAN}→ Searching Bing...{Colors.END}", end=' ')
+        bing_results = search_bing(fmt, num_results=5)
+        format_results.extend(bing_results)
+        print(f"{Colors.GREEN}({len(bing_results)} results){Colors.END}")
         
-        # Rate limiting: wait 2 seconds between searches (best practice to avoid throttling)
+        time.sleep(1)  # Rate limiting
+        
+        # Search DuckDuckGo
+        print(f"  {Colors.CYAN}→ Searching DuckDuckGo...{Colors.END}", end=' ')
+        ddg_results = search_duckduckgo(fmt, num_results=5)
+        format_results.extend(ddg_results)
+        print(f"{Colors.GREEN}({len(ddg_results)} results){Colors.END}")
+        
+        all_results[fmt] = format_results
+        
+        print(f"  {Colors.GREEN}✓ Total: {len(format_results)} results for this format{Colors.END}")
+        
+        if debug_mode and format_results:
+            print(f"  {Colors.YELLOW}Debug: Sample - {format_results[0].get('title', 'N/A')[:60]}...{Colors.END}")
+        
+        # Rate limiting between formats
         if i < len(formats):
-            print(f"  {Colors.YELLOW}⏳ Waiting 2 seconds...{Colors.END}")
-            time.sleep(2)
+            print(f"  {Colors.YELLOW}⏳ Waiting 3 seconds...{Colors.END}\n")
+            time.sleep(3)
+        else:
+            print()
     
     # Analyze patterns
-    print(f"\n{Colors.YELLOW}Analyzing patterns across all results...{Colors.END}")
+    print(f"{Colors.YELLOW}Analyzing patterns across all results...{Colors.END}")
     patterns = analyze_patterns(all_results)
     
     # Print summary
     print_pattern_summary(patterns)
     
     # Optional: Save detailed results to file
-    save_option = input(f"{Colors.CYAN}Save detailed results to JSON file? (y/n): {Colors.END}")
+    save_option = input(f"{Colors.CYAN}Save detailed results to file? (y/n): {Colors.END}")
     if save_option.lower() == 'y':
-        filename = f"phone_search_{re.sub(r'\\D', '', phone_number)}.json"
+        import json
+        filename = f"telespot_results_{re.sub(r'\\D', '', phone_number)}.json"
         output_data = {
             'phone_number': phone_number,
             'search_formats': formats,
@@ -470,4 +435,6 @@ if __name__ == "__main__":
         sys.exit(0)
     except Exception as e:
         print(f"\n{Colors.RED}Unexpected error: {e}{Colors.END}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)

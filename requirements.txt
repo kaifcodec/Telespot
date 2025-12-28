@@ -1,5 +1,9 @@
 # TeleSpot Requirements
-# Phone number OSINT search tool
+# Phone number OSINT search tool - Multi-Engine Version
 
-# DuckDuckGo command-line search tool
-ddgr>=2.1
+# Web scraping and HTTP requests
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+
+# HTML parsing support
+lxml>=4.9.0
