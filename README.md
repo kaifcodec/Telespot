@@ -17,10 +17,14 @@
 A Python script that searches telephone numbers across **Google, Bing, DuckDuckGo, and Dehashed** for phone numbers and focuses on identifying **names, locations, and usernames** in the results. Features API-based searching to avoid CAPTCHAs and IP blocks!
 
 ✨ Dev Updates - January 2 2026
+
 1️⃣ All bugs are being reviewed today Jan 2 2026
+
 2️⃣ Testing new version will be done by Jan 4 2026.
+
 3️⃣ First COMPLETE release to be finished by Jan 6 2026.
-4️⃣ A lot of great new features to be included!!!!
+
+4️⃣ A lot of great new and unique features to be included!!!!
 
 ### 🔍 Search Capabilities
 - **🔓 API-Based Search**: Google Custom Search, Bing Search, DuckDuckGo
