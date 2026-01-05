@@ -13,6 +13,7 @@ import re
 import sys
 import os
 import json
+import random
 import argparse
 import subprocess
 from collections import Counter
@@ -200,6 +201,50 @@ class Config:
 config = Config()
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# USER AGENT ROTATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+USER_AGENTS = [
+    # Chrome on Windows
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+    # Chrome on Mac
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    # Chrome on Linux
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    # Firefox
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 14.1; rv:121.0) Gecko/20100101 Firefox/121.0',
+    'Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0',
+    # Edge
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
+    # Safari
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+    # Mobile
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+]
+
+
+def get_random_headers():
+    """Get request headers with random User-Agent"""
+    return {
+        'User-Agent': random.choice(USER_AGENTS),
+        'Accept': 'application/json, text/html, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+    }
+
+
+def rate_limit():
+    """Random rate limiting between 3-5 seconds"""
+    delay = random.uniform(3.0, 5.0)
+    time.sleep(delay)
+    return delay
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # US STATES AND LOCATION DATA
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -313,7 +358,8 @@ def search_google_api(query, api_key, cse_id, num_results=10, verbose=False, deb
             'num': min(num_results, 10),
         }
 
-        response = requests.get(url, params=params, timeout=15)
+        headers = get_random_headers()
+        response = requests.get(url, params=params, headers=headers, timeout=15)
 
         if debug:
             print(f"    [DEBUG] Google API status: {response.status_code}")
@@ -352,7 +398,8 @@ def search_bing_api(query, api_key, num_results=10, verbose=False, debug=False):
 
     try:
         url = "https://api.bing.microsoft.com/v7.0/search"
-        headers = {'Ocp-Apim-Subscription-Key': api_key}
+        headers = get_random_headers()
+        headers['Ocp-Apim-Subscription-Key'] = api_key
         params = {
             'q': query,
             'count': num_results,
@@ -403,7 +450,8 @@ def search_duckduckgo_api(query, num_results=10, verbose=False, debug=False):
             'skip_disambig': 1,
         }
 
-        response = requests.get(url, params=params, timeout=15)
+        headers = get_random_headers()
+        response = requests.get(url, params=params, headers=headers, timeout=15)
 
         if debug:
             print(f"    [DEBUG] DuckDuckGo API status: {response.status_code}")
@@ -462,7 +510,8 @@ def search_dehashed_api(query, api_key, verbose=False, debug=False):
     try:
         url = "https://api.dehashed.com/search"
         params = {'query': f'phone:"{query}"'}
-        headers = {'Accept': 'application/json'}
+        headers = get_random_headers()
+        headers['Accept'] = 'application/json'
         auth = (api_key.split(':')[0], api_key.split(':')[1]) if ':' in api_key else (api_key, '')
 
         response = requests.get(url, params=params, headers=headers, auth=auth, timeout=15)
@@ -972,10 +1021,10 @@ def run_search(phone_number, args):
 
         print(f"  {color.success(f'✓ {len(format_results)} total for this format')}")
 
-        # Rate limiting
+        # Rate limiting (random 3-5 seconds)
         if i < len(formats):
-            print(f"  {color.warning(f'⏳ Waiting {delay} seconds...')}\n")
-            time.sleep(delay)
+            delay_time = rate_limit()
+            print(f"  {color.warning(f'⏳ Waited {delay_time:.1f} seconds')}\n")
         else:
             print()
 
