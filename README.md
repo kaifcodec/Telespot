@@ -34,6 +34,23 @@ pip install -r requirements.txt
 - **Anti-Detection**: User-agent rotation (11 profiles), random 3-5s delays
 - **Output Options**: Verbose, colorful, JSON/TXT export, summary charts
 
+## TelespotX (Fast Mode)
+
+For maximum speed, use `telespotx.py` - parallel requests, no rate limiting, US numbers only:
+
+```bash
+pip install httpx
+./telespotx.py 8885551212        # ~5 seconds vs ~60 seconds
+```
+
+| | telespot.py | telespotx.py |
+|---|---|---|
+| Speed | ~60s | ~5s |
+| Rate limiting | Yes | No |
+| Formats | 10 | 6 |
+| Region | International | US only |
+| Library | requests | httpx |
+
 ## Usage
 
 ```bash
